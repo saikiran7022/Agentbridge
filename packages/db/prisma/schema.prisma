@@ -13,6 +13,13 @@ enum OrgRole {
   MEMBER
 }
 
+enum JoinStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
 enum ProjectRole {
   OWNER
   APPROVER
@@ -81,6 +88,7 @@ model Organization {
   mcpServers  McpServer[]
   skills      Skill[]
   auditEvents AuditEvent[]
+  teamJoinRequests TeamJoinRequest[]
 }
 
 model Department {
@@ -92,6 +100,8 @@ model Department {
   createdAt   DateTime        @default(now())
   org         Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
   orgMembers  OrgMember[]
+  teamMembers TeamMember[]
+  joinRequests TeamJoinRequest[]
   projectMembers ProjectMember[]
   agents      LiaisonAgent[]
   mcpServers  McpServer[]
@@ -105,12 +115,16 @@ model Department {
 model User {
   id          String          @id @default(cuid())
   githubId    String?         @unique
+  oidcSub     String?         @unique
   login       String          @unique
   name        String?
   email       String?
   avatarUrl   String?
   createdAt   DateTime        @default(now())
   orgMemberships OrgMember[]
+  teamMemberships TeamMember[]
+  joinRequests TeamJoinRequest[] @relation("JoinRequester")
+  decidedJoinRequests TeamJoinRequest[] @relation("JoinDecider")
   projectMemberships ProjectMember[]
   apiTokens   ApiToken[]
   askedRequests Request[]     @relation("RequestAsker")
@@ -132,6 +146,40 @@ model OrgMember {
   department   Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
 
   @@unique([orgId, userId])
+}
+
+/// A person belongs to any number of teams. OrgMember.departmentId is only their "home" team.
+model TeamMember {
+  id           String     @id @default(cuid())
+  departmentId String
+  userId       String
+  createdAt    DateTime   @default(now())
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([departmentId, userId])
+  @@index([userId])
+}
+
+/// Someone asks to join a team; only an org admin can approve it.
+model TeamJoinRequest {
+  id           String       @id @default(cuid())
+  orgId        String
+  departmentId String
+  userId       String
+  message      String       @default("")
+  status       JoinStatus   @default(PENDING)
+  decidedById  String?
+  decisionNote String       @default("")
+  decidedAt    DateTime?
+  createdAt    DateTime     @default(now())
+  org          Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  department   Department   @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  user         User         @relation("JoinRequester", fields: [userId], references: [id], onDelete: Cascade)
+  decidedBy    User?        @relation("JoinDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+
+  @@index([orgId, status])
+  @@index([userId, departmentId, status])
 }
 
 model ApiToken {

@@ -57,6 +57,49 @@ export async function upsertUserFromLogin(input: {
   return user;
 }
 
+export interface OidcProfile {
+  sub: string;
+  login: string;
+  name?: string | null;
+  email?: string | null;
+  avatarUrl?: string | null;
+  /** Realm roles from the identity provider. "hub-admin" makes the person an org admin. */
+  roles?: string[];
+}
+
+/**
+ * Signs a person in from an OIDC provider (Keycloak). They are matched by the provider's stable
+ * subject first. A pre-provisioned account (added by an admin with the same login, never signed in)
+ * is claimed on first sign-in. Registering at the provider never takes over an account that already
+ * belongs to somebody else.
+ */
+export async function upsertUserFromOidc(profile: OidcProfile) {
+  const org = await ensureDefaultOrg();
+  const login = profile.login.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/^-+|-+$/g, "").slice(0, 39) || `user-${profile.sub.slice(0, 8)}`;
+  const data = { name: profile.name ?? undefined, email: profile.email ?? undefined, avatarUrl: profile.avatarUrl ?? undefined };
+  let user = await prisma.user.findUnique({ where: { oidcSub: profile.sub } });
+  if (user) {
+    user = await prisma.user.update({ where: { id: user.id }, data });
+  } else {
+    const byLogin = await prisma.user.findUnique({ where: { login } });
+    if (byLogin && !byLogin.oidcSub && !byLogin.githubId) {
+      user = await prisma.user.update({ where: { id: byLogin.id }, data: { ...data, oidcSub: profile.sub } });
+    } else {
+      let candidate = login;
+      for (let i = 2; await prisma.user.findUnique({ where: { login: candidate } }); i++) candidate = `${login.slice(0, 35)}-${i}`;
+      user = await prisma.user.create({ data: { ...data, login: candidate, oidcSub: profile.sub } });
+    }
+  }
+  const member = await prisma.orgMember.findUnique({ where: { orgId_userId: { orgId: org.id, userId: user.id } } });
+  const wantsAdmin = profile.roles?.includes("hub-admin") ?? false;
+  if (!member) {
+    await prisma.orgMember.create({ data: { orgId: org.id, userId: user.id, role: wantsAdmin ? "ADMIN" : "MEMBER" } });
+  } else if (wantsAdmin && member.role !== "ADMIN") {
+    await prisma.orgMember.update({ where: { id: member.id }, data: { role: "ADMIN" } });
+  }
+  return user;
+}
+
 export async function getOrgMembership(userId: string) {
   const org = await ensureDefaultOrg();
   const member = await prisma.orgMember.findUnique({ where: { orgId_userId: { orgId: org.id, userId } } });

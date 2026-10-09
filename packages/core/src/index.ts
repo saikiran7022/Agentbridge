@@ -13,4 +13,5 @@ export * from "./projects.js";
 export * from "./queue.js";
 export * from "./redact.js";
 export * from "./requests.js";
+export * from "./teams.js";
 export * from "./tokens.js";

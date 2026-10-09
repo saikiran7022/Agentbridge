@@ -66,7 +66,7 @@ describe.skipIf(!dbReady)("request lifecycle", () => {
 
   beforeEach(async () => {
     await prisma.$executeRawUnsafe(
-      'TRUNCATE "AuditEvent","RequestMessage","Request","LiaisonAgentMcp","LiaisonAgentSkill","ProjectSkill","LiaisonAgent","ProjectMember","Project","McpServer","Skill","ApiToken","OrgMember","Department","User","Organization" CASCADE',
+      'TRUNCATE "AuditEvent","RequestMessage","Request","LiaisonAgentMcp","LiaisonAgentSkill","ProjectSkill","LiaisonAgent","ProjectMember","Project","McpServer","Skill","ApiToken","TeamJoinRequest","TeamMember","OrgMember","Department","User","Organization" CASCADE',
     );
     jobs = [];
     setJobSink(async (name, data) => {

@@ -48,6 +48,11 @@ async function main() {
         update: {},
         create: { orgId: org.id, userId: user.id, role: p.orgRole, departmentId: byKey[p.dept].id },
       });
+      await prisma.teamMember.upsert({
+        where: { departmentId_userId: { departmentId: byKey[p.dept].id, userId: user.id } },
+        update: {},
+        create: { departmentId: byKey[p.dept].id, userId: user.id },
+      });
       await prisma.projectMember.upsert({
         where: { projectId_userId: { projectId: project.id, userId: user.id } },
         update: {},
