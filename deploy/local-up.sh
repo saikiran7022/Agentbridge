@@ -56,6 +56,10 @@ helm upgrade --install "$RELEASE" deploy/helm/agent-liaison-hub \
   --set keycloak.demoUsers="$DEMO" \
   --wait --timeout 10m
 
+if [[ "$DEMO" == "true" ]]; then
+  kubectl apply -f deploy/demo/payments-api.yaml >/dev/null && echo "==> Demo workload staging/payments-api applied"
+fi
+
 echo
 echo "==> Ready. In another terminal:"
 echo "    kubectl -n $NAMESPACE port-forward svc/$RELEASE-web 3000:3000"

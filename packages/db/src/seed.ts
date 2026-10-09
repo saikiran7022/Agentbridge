@@ -65,6 +65,69 @@ async function main() {
       });
     }
     console.log(`Seeded demo project "payments" with ${people.length} members`);
+
+    // Real tools for the demo agents. The kagent tool server runs with broad cluster permissions, so the
+    // Hub only grants the explicit tool names below: reads for everyone, scale/rollout only to the
+    // approval-gated "-exec" agents.
+    const k8s = await prisma.mcpServer.upsert({
+      where: { orgId_slug: { orgId: org.id, slug: "kubernetes" } },
+      update: {},
+      create: {
+        orgId: org.id,
+        slug: "kubernetes",
+        name: "Kubernetes",
+        description: "Inspect workloads, events, logs and Helm releases in the cluster. Scaling and restarts need an approved change.",
+        transport: "STREAMABLE_HTTP",
+        url: "http://kagent-tools.kagent:8084/mcp",
+        access: "READ_WRITE",
+        readTools: [
+          "k8s_get_resources",
+          "k8s_describe_resource",
+          "k8s_get_resource_yaml",
+          "k8s_get_events",
+          "k8s_get_pod_logs",
+          "k8s_get_available_api_resources",
+          "k8s_get_cluster_configuration",
+          "helm_list_releases",
+          "helm_get_release",
+          "datetime_get_current_time",
+        ],
+        writeTools: ["k8s_scale", "k8s_rollout"],
+      },
+    });
+    const docs = await prisma.mcpServer.upsert({
+      where: { orgId_slug: { orgId: org.id, slug: "context7" } },
+      update: {},
+      create: {
+        orgId: org.id,
+        slug: "context7",
+        name: "Library docs (Context7)",
+        description: "Up-to-date documentation for libraries and frameworks.",
+        transport: "STREAMABLE_HTTP",
+        url: "https://mcp.context7.com/mcp",
+        access: "READ_ONLY",
+        readTools: ["resolve-library-id", "query-docs"],
+        writeTools: [],
+      },
+    });
+    const attach: [string, string, "READ_ONLY" | "APPROVAL_FOR_WRITES" | null][] = [
+      ["devops", k8s.id, "APPROVAL_FOR_WRITES"],
+      ["infra", k8s.id, "APPROVAL_FOR_WRITES"],
+      ["dev", docs.id, null],
+    ];
+    for (const [dept, mcpServerId, autonomy] of attach) {
+      const agent = await prisma.liaisonAgent.findUniqueOrThrow({
+        where: { projectId_departmentId: { projectId: project.id, departmentId: byKey[dept].id } },
+      });
+      if (autonomy) await prisma.liaisonAgent.update({ where: { id: agent.id }, data: { autonomy, syncStatus: "PENDING" } });
+      await prisma.liaisonAgentMcp.upsert({
+        where: { agentId_mcpServerId: { agentId: agent.id, mcpServerId } },
+        update: {},
+        create: { agentId: agent.id, mcpServerId },
+      });
+      if (!autonomy) await prisma.liaisonAgent.update({ where: { id: agent.id }, data: { syncStatus: "PENDING" } });
+    }
+    console.log("Attached demo MCP servers: kubernetes (devops, infra), context7 (dev)");
   }
 
   console.log(`Organization "${org.name}" (${org.slug}) ready`);

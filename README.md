@@ -100,6 +100,16 @@ at `host.docker.internal:8083`. See [docs/kagent.md](docs/kagent.md) for applyin
    kubectl -n kagent get agents.kagent.dev -l app.kubernetes.io/managed-by=agent-liaison-hub
    ```
 
+With `DEMO=true` the script also seeds real tools for the demo agents and applies a small workload (`staging/payments-api`, see
+`deploy/demo/payments-api.yaml`): DevOps and Infrastructure get the Kubernetes tool server that kagent installs (read tools, plus
+`k8s_scale` and `k8s_rollout` only for the approval-gated `-exec` agents) and Development gets library docs from Context7. Try asking from
+Claude Code: "Ask DevOps how many replicas payments-api has in staging", or "Ask infra to scale payments-api in staging to 4 replicas" and
+approve it as `ivan-infra`.
+
+> kagent's tool server runs with cluster-admin permissions. The Hub only attaches the tool names listed in the catalog entry, and agents
+> are told never to reveal secret values, but an agent can still *read* a Secret if it is given a tool that reads Secrets. Keep catalog
+> read lists tight, and run the tool server with a restricted ServiceAccount for anything shared.
+
 For a shared install, use the chart directly with real GitHub credentials, an ingress and external databases:
 
 ```bash
