@@ -1,0 +1,27 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+html,
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
+}
+
+.prose-hub p {
+  @apply my-2;
+}
+
+.prose-hub pre {
+  @apply my-2 overflow-x-auto rounded-md bg-slate-900 p-3 text-xs text-slate-100;
+}
+
+.prose-hub code {
+  @apply rounded bg-slate-100 px-1 py-0.5 font-mono text-[0.85em];
+}
+
+.prose-hub pre code {
+  @apply bg-transparent p-0 text-slate-100;
+}
