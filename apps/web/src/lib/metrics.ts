@@ -62,3 +62,37 @@ export function formatMinutes(m: number | null): string {
 export function formatPercent(p: number | null): string {
   return p === null ? "n/a" : `${Math.round(p * 100)}%`;
 }
+
+export interface DailyCount {
+  day: string;
+  label: string;
+  total: number;
+  byAgent: number;
+}
+
+/** Requests created per day for the last `days` days (oldest first), with how many an agent answered. */
+export async function dailyRequestCounts(where: Prisma.RequestWhereInput, days = 14): Promise<DailyCount[]> {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - (days - 1));
+  const rows = await prisma.request.findMany({
+    where: { ...where, createdAt: { gte: start } },
+    select: { createdAt: true, answeredByAgent: true, status: true },
+  });
+  const out: DailyCount[] = [];
+  for (let i = 0; i < days; i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    out.push({ day: d.toISOString().slice(0, 10), label: d.toLocaleDateString("en", { month: "short", day: "numeric" }), total: 0, byAgent: 0 });
+  }
+  const byDay = new Map(out.map((o) => [o.day, o]));
+  for (const r of rows) {
+    const d = new Date(r.createdAt);
+    d.setHours(0, 0, 0, 0);
+    const slot = byDay.get(d.toISOString().slice(0, 10)) ?? byDay.get(new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10));
+    if (!slot) continue;
+    slot.total += 1;
+    if (r.answeredByAgent && r.status === "ANSWERED") slot.byAgent += 1;
+  }
+  return out;
+}

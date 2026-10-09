@@ -1,14 +1,16 @@
 import Link from "next/link";
-import { listInbox } from "@hub/core";
+import { listInbox, pendingJoinRequestCount } from "@hub/core";
 import { getOrgContext } from "@/lib/session";
 import { SignOutButton } from "@/components/sign-out-button";
+import { oidc } from "@/lib/auth";
 import { NavLink } from "@/components/nav-link";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export const dynamic = "force-dynamic";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, org, isAdmin } = await getOrgContext();
-  const inbox = await listInbox(user);
+  const [inbox, pendingRequests] = await Promise.all([listInbox(user), isAdmin ? pendingJoinRequestCount(org.id) : Promise.resolve(0)]);
 
   return (
     <div className="flex min-h-screen">
@@ -24,11 +26,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <NavLink href="/" exact>Dashboard</NavLink>
           <NavLink href="/inbox" badge={inbox.length || undefined}>My inbox</NavLink>
           <NavLink href="/projects">Projects</NavLink>
+          <NavLink href="/teams">Teams</NavLink>
           <NavLink href="/get-started">Get started</NavLink>
           {isAdmin && (
             <>
               <div className="px-3 pb-1 pt-5 text-xs font-semibold uppercase tracking-wide text-slate-400">Organization</div>
-              <NavLink href="/manage">Manage</NavLink>
+              <NavLink href="/manage" badge={pendingRequests || undefined}>Manage</NavLink>
               <NavLink href="/admin/users">People</NavLink>
               <NavLink href="/admin/departments">Departments</NavLink>
               <NavLink href="/admin/mcp-servers">MCP servers</NavLink>
@@ -36,19 +39,22 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </>
           )}
         </nav>
-        <div className="flex items-center justify-between gap-2 border-t border-slate-200 px-4 py-3">
+        <div className="space-y-2 border-t border-slate-200 px-4 py-3">
           <div className="flex min-w-0 items-center gap-2">
             {user.avatarUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={user.avatarUrl} alt="" className="h-7 w-7 rounded-full" />
             ) : (
-              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold">
                 {user.login.slice(0, 2).toUpperCase()}
               </span>
             )}
-            <span className="truncate text-sm">{user.login}</span>
+            <span className="truncate text-sm" title={user.login}>{user.login}</span>
           </div>
-          <SignOutButton />
+          <div className="flex items-center justify-between">
+            <ThemeToggle className="-ml-2" />
+            <SignOutButton sso={oidc.enabled} />
+          </div>
         </div>
       </aside>
       <main className="min-w-0 flex-1 px-8 py-8">

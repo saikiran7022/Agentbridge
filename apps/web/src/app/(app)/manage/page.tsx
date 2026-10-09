@@ -1,10 +1,11 @@
 import { prisma } from "@hub/db";
 import { Avatar, AvatarStack, toneAt } from "@/components/avatar";
 import { LiveFilter } from "@/components/live-filter";
+import { Popover } from "@/components/popover";
 import { SubmitButton } from "@/components/submit-button";
-import { Badge, Card, EmptyState, Field, Flash, Input, LinkButton, PageHeader, Select, cx } from "@/components/ui";
+import { Badge, Card, EmptyState, Field, Flash, Input, LinkButton, PageHeader, Select, TimeAgo, cx } from "@/components/ui";
 import { requireAdmin } from "@/lib/session";
-import { addPerson, assignToProject, deleteTeam, moveToTeam, saveTeam, unassignFromProject } from "./actions";
+import { addPerson, addToTeam, assignToProject, decideJoin, deleteTeam, removeFromTeam, saveTeam, unassignFromProject } from "./actions";
 
 const ROLE_TONE = { OWNER: "violet", APPROVER: "green", CONTRIBUTOR: "blue", VIEWER: "gray" } as const;
 
@@ -25,48 +26,34 @@ function Section({ id, title, subtitle, actions, children }: { id: string; title
   );
 }
 
-/** A button that opens a small form panel, with no client JavaScript. */
-function Popover({ label, align = "left", inline, children, className }: { label: React.ReactNode; align?: "left" | "right"; inline?: boolean; children: React.ReactNode; className?: string }) {
-  return (
-    <details className={cx("group relative", className)}>
-      <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 group-open:border-indigo-400 group-open:text-indigo-700 [&::-webkit-details-marker]:hidden">
-        {label}
-      </summary>
-      <div
-        className={cx(
-          "mt-2 rounded-xl border border-slate-200 bg-white p-4",
-          inline ? "w-full bg-slate-50" : cx("absolute z-20 w-72 shadow-xl", align === "right" ? "right-0" : "left-0"),
-        )}
-      >
-        {children}
-      </div>
-    </details>
-  );
-}
-
 export default async function ManagePage({ searchParams }: { searchParams: Promise<{ ok?: string; error?: string }> }) {
   const { org } = await requireAdmin();
-  const [teams, people, projects] = await Promise.all([
+  const [teams, people, projects, joinRequests] = await Promise.all([
     prisma.department.findMany({
       where: { orgId: org.id },
       orderBy: { name: "asc" },
-      include: { _count: { select: { agents: true } }, orgMembers: { include: { user: true } } },
+      include: { _count: { select: { agents: true } }, teamMembers: { include: { user: true }, orderBy: { createdAt: "asc" } } },
     }),
     prisma.orgMember.findMany({
       where: { orgId: org.id },
       orderBy: { user: { login: "asc" } },
-      include: { user: true, department: true },
+      include: { user: { include: { teamMemberships: { include: { department: true } } } }, department: true },
     }),
     prisma.project.findMany({
       where: { orgId: org.id, archived: false },
       orderBy: { name: "asc" },
       include: { members: { include: { user: true } }, agents: true },
     }),
+    prisma.teamJoinRequest.findMany({
+      where: { orgId: org.id, status: "PENDING" },
+      orderBy: { createdAt: "asc" },
+      include: { user: true, department: true },
+    }),
   ]);
 
   const projectsPerTeam = new Map<string, number>();
   for (const p of projects) for (const id of new Set(p.members.map((m) => m.departmentId))) projectsPerTeam.set(id, (projectsPerTeam.get(id) ?? 0) + 1);
-  const unassigned = people.filter((m) => !m.departmentId).length;
+  const unassigned = people.filter((m) => m.user.teamMemberships.length === 0).length;
   const gaps = projects.reduce((n, p) => n + teams.filter((t) => !p.members.some((m) => m.departmentId === t.id)).length, 0);
 
   return (
@@ -81,19 +68,52 @@ export default async function ManagePage({ searchParams }: { searchParams: Promi
       <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
         {[
           { label: "Teams", value: teams.length, href: "#teams", hint: `${teams.reduce((n, t) => n + t._count.agents, 0)} liaison agents` },
-          { label: "People", value: people.length, href: "#people", hint: unassigned ? `${unassigned} without a team` : "Everyone has a team" },
-          { label: "Projects", value: projects.length, href: "#projects", hint: "Active" },
+          { label: "People", value: people.length, href: "#people", hint: unassigned ? `${unassigned} not on a team` : "Everyone is on a team" },
+          { label: "Join requests", value: joinRequests.length, href: "#requests", hint: joinRequests.length ? "Waiting for you" : "All caught up" },
           { label: "Coverage gaps", value: gaps, href: "#projects", hint: gaps ? "Teams missing from projects" : "Every team is staffed" },
         ].map((s) => (
           <a key={s.label} href={s.href} className="rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm transition hover:border-indigo-300 hover:shadow">
             <div className="text-xs font-medium uppercase tracking-wide text-slate-500">{s.label}</div>
-            <div className={cx("mt-1 text-3xl font-semibold", s.label === "Coverage gaps" && s.value > 0 && "text-amber-600")}>{s.value}</div>
+            <div className={cx("mt-1 text-3xl font-semibold", (s.label === "Coverage gaps" || s.label === "Join requests") && s.value > 0 && "text-amber-600")}>{s.value}</div>
             <div className="mt-0.5 text-xs text-slate-500">{s.hint}</div>
           </a>
         ))}
       </div>
 
       <div className="space-y-12">
+        {/* ---- Join requests ---- */}
+        <Section id="requests" title="Join requests" subtitle="People who signed up and asked to join a team. Only org admins can approve.">
+          {joinRequests.length === 0 ? (
+            <EmptyState title="No pending requests">When someone asks to join a team it shows up here.</EmptyState>
+          ) : (
+            <ul className="space-y-3">
+              {joinRequests.map((r) => (
+                <li key={r.id} className="rounded-xl border border-amber-200 bg-amber-50/60 p-4 shadow-sm">
+                  <form action={decideJoin} className="flex flex-wrap items-center gap-4">
+                    <input type="hidden" name="requestId" value={r.id} />
+                    <Avatar name={r.user.login} src={r.user.avatarUrl} size="md" />
+                    <div className="min-w-0 flex-1 basis-60">
+                      <p className="text-sm">
+                        <strong>{r.user.name ?? r.user.login}</strong> <span className="text-slate-500">@{r.user.login}</span> wants to join{" "}
+                        <strong>{r.department.name}</strong>
+                      </p>
+                      {r.message && <p className="mt-1 text-sm italic text-slate-600">"{r.message}"</p>}
+                      <p className="mt-1 text-xs text-slate-500"><TimeAgo date={r.createdAt} /></p>
+                    </div>
+                    <div className="w-full sm:w-56">
+                      <Input name="note" placeholder="Note (optional)" />
+                    </div>
+                    <div className="flex gap-2">
+                      <SubmitButton name="decision" value="approve" size="sm">Approve</SubmitButton>
+                      <SubmitButton name="decision" value="reject" size="sm" variant="secondary">Decline</SubmitButton>
+                    </div>
+                  </form>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
+
         {/* ---- Teams ---- */}
         <Section id="teams" title="Teams" subtitle="Each team gets a liaison agent on every project it joins.">
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -110,9 +130,9 @@ export default async function ManagePage({ searchParams }: { searchParams: Promi
                 </div>
                 <p className="mt-3 line-clamp-2 min-h-10 text-sm text-slate-600">{t.description || "No description yet."}</p>
                 <div className="mt-4 flex items-center justify-between">
-                  <AvatarStack people={t.orgMembers.map((m) => ({ name: m.user.login, src: m.user.avatarUrl }))} />
+                  <AvatarStack people={t.teamMembers.map((m) => ({ name: m.user.login, src: m.user.avatarUrl }))} />
                   <div className="text-right text-xs text-slate-500">
-                    {plural(t.orgMembers.length, "person").replace("persons", "people")} · {plural(projectsPerTeam.get(t.id) ?? 0, "project")}
+                    {plural(t.teamMembers.length, "person").replace("persons", "people")} · {plural(projectsPerTeam.get(t.id) ?? 0, "project")}
                   </div>
                 </div>
                 <div className="mt-4 flex gap-2 border-t border-slate-100 pt-3">
@@ -291,20 +311,68 @@ export default async function ManagePage({ searchParams }: { searchParams: Promi
                     <div className="truncate text-xs text-slate-500">@{m.user.login}</div>
                   </div>
                 </div>
-                <form action={moveToTeam} className="mt-3 flex gap-2">
-                  <input type="hidden" name="id" value={m.id} />
-                  <Select name="departmentId" defaultValue={m.departmentId ?? ""} aria-label={`Team for ${m.user.login}`} className="py-1.5">
-                    <option value="">No team</option>
-                    {teams.map((t) => (
-                      <option key={t.id} value={t.id}>{t.name}</option>
-                    ))}
-                  </Select>
-                  <SubmitButton size="sm" variant="secondary">Move</SubmitButton>
-                </form>
+                <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                  {m.user.teamMemberships.length === 0 && <span className="text-xs text-slate-400">Not on a team yet</span>}
+                  {m.user.teamMemberships.map((tm) => (
+                    <form key={tm.id} action={removeFromTeam} className="inline-flex items-center gap-1 rounded-full bg-slate-100 py-0.5 pl-2.5 pr-1 text-xs font-medium text-slate-700">
+                      <input type="hidden" name="userId" value={m.userId} />
+                      <input type="hidden" name="departmentId" value={tm.departmentId} />
+                      {tm.department.name}
+                      <button type="submit" aria-label={`Remove ${m.user.login} from ${tm.department.name}`} className="rounded-full px-1 text-slate-400 hover:bg-rose-100 hover:text-rose-600">×</button>
+                    </form>
+                  ))}
+                  {teams.some((t) => !m.user.teamMemberships.some((tm) => tm.departmentId === t.id)) && (
+                    <Popover label="+ Team">
+                      <form action={addToTeam} className="space-y-3">
+                        <input type="hidden" name="userId" value={m.userId} />
+                        <p className="text-sm font-medium">Add {m.user.login} to a team</p>
+                        <Select name="departmentId" defaultValue="">
+                          <option value="" disabled>Choose a team...</option>
+                          {teams
+                            .filter((t) => !m.user.teamMemberships.some((tm) => tm.departmentId === t.id))
+                            .map((t) => (
+                              <option key={t.id} value={t.id}>{t.name}</option>
+                            ))}
+                        </Select>
+                        <SubmitButton size="sm">Add</SubmitButton>
+                      </form>
+                    </Popover>
+                  )}
+                </div>
               </div>
             ))}
           </div>
         </Section>
+
+        <details className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <summary className="cursor-pointer text-sm font-semibold">Who can do what</summary>
+          <div className="mt-4 overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <th className="px-3 py-2 font-medium">Role</th>
+                  <th className="px-3 py-2 font-medium">How you get it</th>
+                  <th className="px-3 py-2 font-medium">What you can do</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {[
+                  ["Org admin", "Keycloak role hub-admin, or set on People", "Create, edit and delete teams. Approve join requests. Put anyone on a team or a project. Manage MCP servers and skills."],
+                  ["Team member", "Request to join, then an admin approves", "Be added to projects on behalf of that team. Start a project for that team."],
+                  ["Project owner", "Starts a project, or is made owner", "Manage the project: people from their own teams, agents, settings."],
+                  ["Approver", "Project role", "Approve or reject changes agents propose for their team."],
+                  ["Contributor / Viewer", "Project role", "Answer requests for their team / read only."],
+                ].map(([role, how, can]) => (
+                  <tr key={role}>
+                    <td className="px-3 py-2 font-medium">{role}</td>
+                    <td className="px-3 py-2 text-slate-600">{how}</td>
+                    <td className="px-3 py-2 text-slate-600">{can}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
       </div>
     </>
   );

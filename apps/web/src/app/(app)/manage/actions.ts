@@ -1,6 +1,6 @@
 "use server";
 
-import { audit, badRequest } from "@hub/core";
+import { addTeamMember, audit, authorizeProjectSeat, badRequest, decideJoinRequest, removeTeamMember } from "@hub/core";
 import { prisma } from "@hub/db";
 import { act, optStr, slugify, str } from "@/lib/form";
 import { requireAdmin } from "@/lib/session";
@@ -35,24 +35,45 @@ export async function deleteTeam(fd: FormData) {
 
 export async function addPerson(fd: FormData) {
   return act(BACK, async () => {
-    const { org } = await requireAdmin();
+    const { org, user: actor } = await requireAdmin();
     const login = str(fd, "login").toLowerCase().replace(/^@/, "");
     if (!/^[a-z0-9][a-z0-9-]{0,38}$/.test(login)) throw badRequest("Enter a valid GitHub login");
     const user = await prisma.user.upsert({ where: { login }, update: {}, create: { login, name: optStr(fd, "name") } });
     await prisma.orgMember.upsert({
       where: { orgId_userId: { orgId: org.id, userId: user.id } },
-      update: { departmentId: optStr(fd, "departmentId") },
-      create: { orgId: org.id, userId: user.id, departmentId: optStr(fd, "departmentId") },
+      update: {},
+      create: { orgId: org.id, userId: user.id },
     });
+    const departmentId = optStr(fd, "departmentId");
+    if (departmentId) await addTeamMember({ orgId: org.id, departmentId, userId: user.id, actorId: actor.id });
     return `Added ${login}`;
   });
 }
 
-export async function moveToTeam(fd: FormData) {
+export async function addToTeam(fd: FormData) {
   return act(BACK, async () => {
-    const { org } = await requireAdmin();
-    await prisma.orgMember.update({ where: { id: str(fd, "id"), orgId: org.id }, data: { departmentId: optStr(fd, "departmentId") } });
-    return "Team updated";
+    const { org, user: actor } = await requireAdmin();
+    const departmentId = str(fd, "departmentId");
+    if (!departmentId) throw badRequest("Pick a team");
+    await addTeamMember({ orgId: org.id, departmentId, userId: str(fd, "userId"), actorId: actor.id });
+    return "Added to team";
+  });
+}
+
+export async function removeFromTeam(fd: FormData) {
+  return act(BACK, async () => {
+    const { org, user: actor } = await requireAdmin();
+    await removeTeamMember({ orgId: org.id, departmentId: str(fd, "departmentId"), userId: str(fd, "userId"), actorId: actor.id });
+    return "Removed from team";
+  });
+}
+
+export async function decideJoin(fd: FormData) {
+  return act(BACK, async () => {
+    const { org, user: actor } = await requireAdmin();
+    const approve = str(fd, "decision") === "approve";
+    await decideJoinRequest({ orgId: org.id, requestId: str(fd, "requestId"), actorId: actor.id, approve, note: str(fd, "note") });
+    return approve ? "Approved. They are on the team." : "Request declined";
   });
 }
 
@@ -69,8 +90,9 @@ export async function assignToProject(fd: FormData) {
     await prisma.orgMember.upsert({
       where: { orgId_userId: { orgId: org.id, userId: user.id } },
       update: {},
-      create: { orgId: org.id, userId: user.id, departmentId },
+      create: { orgId: org.id, userId: user.id },
     });
+    await authorizeProjectSeat({ orgId: org.id, actorId: actor.id, userId: user.id, departmentId });
     await prisma.projectMember.upsert({
       where: { projectId_userId: { projectId: project.id, userId: user.id } },
       update: { departmentId, role },

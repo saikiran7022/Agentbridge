@@ -4,7 +4,10 @@ import { redirect } from "next/navigation";
 import {
   approveRequest,
   audit,
+  authorizeProjectSeat,
   badRequest,
+  forbidden,
+  isTeamMember,
   closeRequest,
   createRequest,
   enqueue,
@@ -29,12 +32,15 @@ function parseRepo(value: string): { owner: string | null; repo: string | null }
 
 export async function createProject(fd: FormData) {
   return act("/projects/new", async () => {
-    const { org, user } = await getOrgContext();
+    const { org, user, isAdmin } = await getOrgContext();
     const name = str(fd, "name");
     const slug = slugify(str(fd, "slug") || name);
     if (!name || !slug) throw badRequest("Project name is required");
     const myDepartmentId = str(fd, "myDepartmentId");
     if (!myDepartmentId) throw badRequest("Pick your own department");
+    if (!isAdmin && !(await isTeamMember(user.id, myDepartmentId))) {
+      throw forbidden("Join a team first. You can only start a project on behalf of a team you belong to.");
+    }
     const departmentIds = new Set([...fd.getAll("departments").map(String), myDepartmentId]);
     const { owner, repo } = parseRepo(str(fd, "repo"));
 
@@ -76,8 +82,9 @@ export async function addProjectMember(fd: FormData) {
     await prisma.orgMember.upsert({
       where: { orgId_userId: { orgId: org.id, userId: user.id } },
       update: {},
-      create: { orgId: org.id, userId: user.id, departmentId },
+      create: { orgId: org.id, userId: user.id },
     });
+    await authorizeProjectSeat({ orgId: org.id, actorId: actor.id, userId: user.id, departmentId });
     await prisma.projectMember.upsert({
       where: { projectId_userId: { projectId: project.id, userId: user.id } },
       update: { departmentId, role },
@@ -92,9 +99,13 @@ export async function addProjectMember(fd: FormData) {
 export async function updateProjectMember(fd: FormData) {
   const slug = str(fd, "slug");
   return act(`/projects/${slug}/members`, async () => {
-    const { project } = await requireProject(slug, { manage: true });
+    const { project, org, user: actor } = await requireProject(slug, { manage: true });
     const role = (ROLES as readonly string[]).includes(str(fd, "role")) ? (str(fd, "role") as (typeof ROLES)[number]) : "CONTRIBUTOR";
     const departmentId = str(fd, "departmentId");
+    const current = await prisma.projectMember.findFirstOrThrow({ where: { id: str(fd, "id"), projectId: project.id } });
+    if (current.departmentId !== departmentId) {
+      await authorizeProjectSeat({ orgId: org.id, actorId: actor.id, userId: current.userId, departmentId });
+    }
     await prisma.projectMember.update({ where: { id: str(fd, "id"), projectId: project.id }, data: { role, departmentId } });
     await ensureAgent(project.id, departmentId);
     return "Saved";
