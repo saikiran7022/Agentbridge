@@ -1,0 +1,33 @@
+{
+  "name": "agent-liaison-hub",
+  "private": true,
+  "packageManager": "pnpm@10.33.3",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @hub/web --filter @hub/worker dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "vitest run",
+    "db:generate": "pnpm --filter @hub/db generate",
+    "db:migrate": "pnpm --filter @hub/db migrate:dev",
+    "db:deploy": "pnpm --filter @hub/db migrate:deploy",
+    "db:seed": "pnpm --filter @hub/db seed"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "prisma",
+      "esbuild",
+      "sharp",
+      "msgpackr-extract"
+    ]
+  }
+}

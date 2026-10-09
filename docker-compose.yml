@@ -1,0 +1,71 @@
+# Local stack: Postgres, Redis, the Hub web app and the worker.
+#
+#   cp .env.example .env   # set HUB_DEV_LOGIN=true for local sign-in without GitHub
+#   docker compose up --build
+#
+# Agents: run kagent in your local cluster (kind, k3d, Docker Desktop...) and either
+#   - port-forward the controller:  kubectl -n kagent port-forward svc/kagent-controller 8083:8083
+#     and keep KAGENT_URL=http://host.docker.internal:8083 below, or
+#   - deploy the Hub itself into the cluster with deploy/helm (recommended for HUB_KUBE_APPLY=true).
+# See docs/kagent.md.
+
+x-hub-env: &hub-env
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql://hub:hub@postgres:5432/hub
+    REDIS_URL: redis://redis:6379
+    KAGENT_URL: ${KAGENT_URL_FROM_DOCKER:-http://host.docker.internal:8083}
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: hub
+      POSTGRES_PASSWORD: hub
+      POSTGRES_DB: hub
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hub"]
+      interval: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      retries: 20
+
+  migrate:
+    build: { context: ., target: worker }
+    <<: *hub-env
+    command: ["sh", "-c", "pnpm --filter @hub/db migrate:deploy && pnpm --filter @hub/db seed"]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  web:
+    build: { context: ., target: web }
+    <<: *hub-env
+    ports: ["3000:3000"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  worker:
+    build: { context: ., target: worker }
+    <<: *hub-env
+    ports: ["4000:4000"]
+    volumes:
+      # Optional: lets the worker apply agents to your cluster when HUB_KUBE_APPLY=true.
+      # The kubeconfig's server address must be reachable from inside the container.
+      - ${KUBECONFIG_DIR:-~/.kube}:/root/.kube:ro
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+volumes:
+  pgdata:

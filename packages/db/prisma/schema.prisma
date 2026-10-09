@@ -1,0 +1,364 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum OrgRole {
+  ADMIN
+  MEMBER
+}
+
+enum ProjectRole {
+  OWNER
+  APPROVER
+  CONTRIBUTOR
+  VIEWER
+}
+
+enum AutonomyLevel {
+  READ_ONLY
+  APPROVAL_FOR_WRITES
+  AUTONOMOUS
+}
+
+enum AgentSyncStatus {
+  PENDING
+  SYNCED
+  RENDERED
+  ERROR
+  DISABLED
+}
+
+enum McpTransport {
+  STREAMABLE_HTTP
+  SSE
+  STDIO
+}
+
+enum McpAccess {
+  READ_ONLY
+  READ_WRITE
+}
+
+enum SkillAudience {
+  AGENT
+  HUMAN
+  BOTH
+}
+
+enum RequestStatus {
+  OPEN
+  ROUTING
+  IN_PROGRESS
+  ANSWERED
+  ESCALATED
+  AWAITING_APPROVAL
+  APPROVED
+  REJECTED
+  CLOSED
+  FAILED
+}
+
+enum AuthorType {
+  HUMAN
+  AGENT
+  SYSTEM
+}
+
+model Organization {
+  id          String       @id @default(cuid())
+  slug        String       @unique
+  name        String
+  createdAt   DateTime     @default(now())
+  departments Department[]
+  members     OrgMember[]
+  projects    Project[]
+  mcpServers  McpServer[]
+  skills      Skill[]
+  auditEvents AuditEvent[]
+}
+
+model Department {
+  id          String          @id @default(cuid())
+  orgId       String
+  key         String
+  name        String
+  description String          @default("")
+  createdAt   DateTime        @default(now())
+  org         Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  orgMembers  OrgMember[]
+  projectMembers ProjectMember[]
+  agents      LiaisonAgent[]
+  mcpServers  McpServer[]
+  skills      Skill[]
+  targetedRequests Request[]  @relation("RequestTarget")
+  resolvedRequests Request[]  @relation("RequestResolved")
+
+  @@unique([orgId, key])
+}
+
+model User {
+  id          String          @id @default(cuid())
+  githubId    String?         @unique
+  login       String          @unique
+  name        String?
+  email       String?
+  avatarUrl   String?
+  createdAt   DateTime        @default(now())
+  orgMemberships OrgMember[]
+  projectMemberships ProjectMember[]
+  apiTokens   ApiToken[]
+  askedRequests Request[]     @relation("RequestAsker")
+  answeredRequests Request[]  @relation("RequestAnswerer")
+  approvedRequests Request[]  @relation("RequestApprover")
+  messages    RequestMessage[]
+  auditEvents AuditEvent[]
+}
+
+model OrgMember {
+  id           String       @id @default(cuid())
+  orgId        String
+  userId       String
+  role         OrgRole      @default(MEMBER)
+  departmentId String?
+  createdAt    DateTime     @default(now())
+  org          Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  department   Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+
+  @@unique([orgId, userId])
+}
+
+model ApiToken {
+  id         String    @id @default(cuid())
+  userId     String
+  name       String
+  prefix     String
+  tokenHash  String    @unique
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Project {
+  id                 String          @id @default(cuid())
+  orgId              String
+  slug               String
+  name               String
+  description        String          @default("")
+  githubOwner        String?
+  githubRepo         String?
+  githubInstallationId Int?
+  githubRepositoryId String?
+  fallbackCategory   String          @default("General")
+  routerEnabled      Boolean         @default(true)
+  slackWebhookUrl    String?
+  archived           Boolean         @default(false)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  org                Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  members            ProjectMember[]
+  agents             LiaisonAgent[]
+  skills             ProjectSkill[]
+  requests           Request[]
+  auditEvents        AuditEvent[]
+
+  @@unique([orgId, slug])
+}
+
+model ProjectMember {
+  id           String      @id @default(cuid())
+  projectId    String
+  userId       String
+  departmentId String
+  role         ProjectRole @default(CONTRIBUTOR)
+  createdAt    DateTime    @default(now())
+  project      Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  department   Department  @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, userId])
+}
+
+model LiaisonAgent {
+  id                     String          @id @default(cuid())
+  projectId              String
+  departmentId           String
+  systemPrompt           String          @default("")
+  model                  String?
+  autonomy               AutonomyLevel   @default(READ_ONLY)
+  confidenceThreshold    Float           @default(0.7)
+  maxHops                Int             @default(3)
+  maxTokens              Int             @default(60000)
+  enabled                Boolean         @default(true)
+  discussionCategoryId   String?
+  discussionCategoryName String?
+  syncStatus             AgentSyncStatus @default(PENDING)
+  syncError              String?
+  lastSyncedAt           DateTime?
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
+  project                Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  department             Department      @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  mcpServers             LiaisonAgentMcp[]
+  skills                 LiaisonAgentSkill[]
+
+  @@unique([projectId, departmentId])
+}
+
+model McpServer {
+  id            String        @id @default(cuid())
+  orgId         String
+  departmentId  String?
+  slug          String
+  name          String
+  description   String        @default("")
+  transport     McpTransport  @default(STREAMABLE_HTTP)
+  url           String?
+  image         String?
+  command       String?
+  args          String[]      @default([])
+  secretName    String?
+  secretKey     String?
+  authHeader    String        @default("Authorization")
+  access        McpAccess     @default(READ_ONLY)
+  readTools     String[]      @default([])
+  writeTools    String[]      @default([])
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  org           Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  department    Department?   @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  agents        LiaisonAgentMcp[]
+
+  @@unique([orgId, slug])
+}
+
+model LiaisonAgentMcp {
+  agentId     String
+  mcpServerId String
+  agent       LiaisonAgent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  mcpServer   McpServer    @relation(fields: [mcpServerId], references: [id], onDelete: Cascade)
+
+  @@id([agentId, mcpServerId])
+}
+
+model Skill {
+  id           String        @id @default(cuid())
+  orgId        String
+  departmentId String?
+  slug         String
+  name         String
+  description  String
+  content      String
+  audience     SkillAudience @default(BOTH)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  org          Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  department   Department?   @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  agents       LiaisonAgentSkill[]
+  projects     ProjectSkill[]
+
+  @@unique([orgId, slug])
+}
+
+model LiaisonAgentSkill {
+  agentId String
+  skillId String
+  agent   LiaisonAgent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  skill   Skill        @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([agentId, skillId])
+}
+
+model ProjectSkill {
+  projectId String
+  skillId   String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  skill     Skill   @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, skillId])
+}
+
+model Request {
+  id                   String        @id @default(cuid())
+  number               Int           @unique @default(autoincrement())
+  projectId            String
+  askerId              String
+  askerClient          String?
+  targetDepartmentId   String?
+  resolvedDepartmentId String?
+  title                String
+  question             String
+  context              String        @default("")
+  status               RequestStatus @default(OPEN)
+  statusReason         String?
+  answer               String?
+  answeredById         String?
+  answeredByAgent      Boolean       @default(false)
+  confidence           Float?
+  proposedAction       String?
+  approvedById         String?
+  rejectReason         String?
+  hops                 Int           @default(0)
+  tokensUsed           Int           @default(0)
+  a2aContextId         String?
+  discussionId         String?       @unique
+  discussionNumber     Int?
+  discussionUrl        String?
+  expiresAt            DateTime?
+  answeredAt           DateTime?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  project              Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  asker                User          @relation("RequestAsker", fields: [askerId], references: [id])
+  targetDepartment     Department?   @relation("RequestTarget", fields: [targetDepartmentId], references: [id])
+  resolvedDepartment   Department?   @relation("RequestResolved", fields: [resolvedDepartmentId], references: [id])
+  answeredBy           User?         @relation("RequestAnswerer", fields: [answeredById], references: [id])
+  approvedBy           User?         @relation("RequestApprover", fields: [approvedById], references: [id])
+  messages             RequestMessage[]
+  auditEvents          AuditEvent[]
+
+  @@index([projectId, status])
+  @@index([status, expiresAt])
+}
+
+model RequestMessage {
+  id              String     @id @default(cuid())
+  requestId       String
+  authorType      AuthorType
+  authorUserId    String?
+  authorAgent     String?
+  body            String
+  githubCommentId String?    @unique
+  createdAt       DateTime   @default(now())
+  request         Request    @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  authorUser      User?      @relation(fields: [authorUserId], references: [id])
+
+  @@index([requestId, createdAt])
+}
+
+model AuditEvent {
+  id          String       @id @default(cuid())
+  orgId       String
+  projectId   String?
+  requestId   String?
+  actorType   AuthorType
+  actorUserId String?
+  actorAgent  String?
+  action      String
+  data        Json         @default("{}")
+  createdAt   DateTime     @default(now())
+  org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project     Project?     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  request     Request?     @relation(fields: [requestId], references: [id], onDelete: SetNull)
+  actorUser   User?        @relation(fields: [actorUserId], references: [id])
+
+  @@index([projectId, createdAt])
+  @@index([orgId, createdAt])
+}
