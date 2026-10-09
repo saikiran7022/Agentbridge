@@ -1,0 +1,23 @@
+{
+  "name": "@hub/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "dotenv -e ../../.env -- tsx watch src/index.ts",
+    "build": "tsc --noEmit",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hub/agent-templates": "workspace:*",
+    "@hub/core": "workspace:*",
+    "@hub/db": "workspace:*",
+    "@kubernetes/client-node": "^1.4.0",
+    "bullmq": "^5.81.5",
+    "tsx": "^4.23.15"
+  },
+  "devDependencies": {
+    "dotenv-cli": "^11.0.0"
+  }
+}
