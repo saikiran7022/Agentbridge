@@ -1,0 +1,32 @@
+# A small workload for the demo agents to inspect and, after approval, scale.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: staging
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payments-api
+  namespace: staging
+  labels: { app: payments-api, team: dev }
+  annotations:
+    hub.dev/owner: "Development"
+    hub.dev/runbook: "Scale with the infra liaison agent; production changes need an approver."
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: payments-api }
+  template:
+    metadata:
+      labels: { app: payments-api, team: dev }
+    spec:
+      containers:
+        - name: api
+          image: nginx:1.27-alpine
+          ports: [{ containerPort: 80 }]
+          env:
+            - { name: FEATURE_REFUND_V2, value: "false" }
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { memory: 64Mi }

@@ -1,0 +1,19 @@
+{
+  "name": "@hub/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "hub": "./dist/hub.mjs"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@hub/mcp": "workspace:*",
+    "tsup": "^8.5.1",
+    "tsx": "^4.23.15"
+  }
+}

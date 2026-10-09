@@ -1,0 +1,39 @@
+{{- if .Values.serviceAccount.create }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "hub.serviceAccountName" . }}
+  labels:
+    {{- include "hub.labels" . | nindent 4 }}
+---
+{{- end }}
+{{- if .Values.agents.kubeApply }}
+# Lets the worker manage the liaison agents it renders, and nothing else, in the kagent namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "hub.fullname" . }}-agents
+  namespace: {{ .Values.agents.kagent.namespace }}
+  labels:
+    {{- include "hub.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["kagent.dev"]
+    resources: ["agents", "remotemcpservers", "mcpservers", "modelconfigs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "hub.fullname" . }}-agents
+  namespace: {{ .Values.agents.kagent.namespace }}
+  labels:
+    {{- include "hub.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "hub.fullname" . }}-agents
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "hub.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

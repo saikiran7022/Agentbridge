@@ -1,0 +1,26 @@
+Agent Liaison Hub is starting in namespace {{ .Release.Namespace }}.
+
+{{- if .Values.ingress.enabled }}
+Open {{ .Values.hubUrl }} (ingress host {{ .Values.ingress.host }}).
+{{- else }}
+Reach the UI with:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "hub.fullname" . }}-web 3000:{{ .Values.web.service.port }}
+and open {{ .Values.hubUrl }} (hubUrl must match the address you use in the browser).
+{{- end }}
+
+{{- if .Values.auth.devLogin }}
+
+Dev login is ON: anyone who can reach the Hub can sign in as any login. Do not expose this install.
+{{- else if not .Values.github.clientId }}
+
+github.clientId is empty and auth.devLogin is false, so nobody can sign in yet. Set the GitHub App
+credentials (see README) or --set auth.devLogin=true on a local cluster.
+{{- end }}
+
+Agents: mode={{ .Values.agents.mode }}, kubeApply={{ .Values.agents.kubeApply }}, kagent={{ .Values.agents.kagent.url }}
+  kubectl -n {{ .Values.agents.kagent.namespace }} get agents.kagent.dev -l app.kubernetes.io/managed-by=agent-liaison-hub
+
+Connect Claude Code (each member, in their repo):
+  curl -fsSL {{ .Values.hubUrl }}/cli/hub.mjs -o ~/.local/bin/hub && chmod +x ~/.local/bin/hub
+  hub login --url {{ .Values.hubUrl }}
+  hub init --project <project>

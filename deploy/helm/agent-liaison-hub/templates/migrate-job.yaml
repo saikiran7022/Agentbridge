@@ -1,0 +1,42 @@
+# Runs on every install/upgrade. Prisma takes an advisory lock, so it is safe alongside running pods.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "hub.fullname" . }}-migrate
+  labels:
+    {{- include "hub.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    helm.sh/hook: post-install,pre-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: 6
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        {{- include "hub.labels" . | nindent 8 }}
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: {{ include "hub.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        {{- include "hub.waitForPostgres" . | nindent 8 }}
+      containers:
+        - name: migrate
+          image: "{{ .Values.image.worker.repository }}:{{ .Values.image.worker.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - >-
+              pnpm --filter @hub/db migrate:deploy
+              {{- if .Values.migrations.seed }}
+              && pnpm --filter @hub/db seed{{ if .Values.migrations.demo }} -- --demo{{ end }}
+              {{- end }}
+          {{- include "hub.env" . | nindent 10 }}
