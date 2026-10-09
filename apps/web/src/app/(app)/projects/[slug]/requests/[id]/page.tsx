@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { canAnswer, canApprove, DONE_STATES } from "@hub/core";
 import { prisma } from "@hub/db";
-import { Badge, Card, Field, Flash, Input, StatusBadge, Textarea, TimeAgo, cx } from "@/components/ui";
+import { Badge, Card, Field, Flash, Input, ProgressBar, StatusBadge, Textarea, TimeAgo, cx } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { requireProject } from "@/lib/session";
 import { approveAction, closeAction, rejectAction, replyAction } from "../../../actions";
@@ -27,6 +27,14 @@ export default async function RequestPage({
     },
   });
   if (!r) notFound();
+
+  const teamId = r.resolvedDepartmentId ?? r.targetDepartmentId;
+  const agent = teamId
+    ? await prisma.liaisonAgent.findUnique({
+        where: { projectId_departmentId: { projectId: project.id, departmentId: teamId } },
+        select: { maxTokens: true },
+      })
+    : null;
 
   const isAsker = r.askerId === user.id;
   const mayAnswer = canAnswer(membership, r) && !isAsker;
@@ -143,7 +151,7 @@ export default async function RequestPage({
               <Row label="Created"><TimeAgo date={r.createdAt} /></Row>
               {r.answeredAt && <Row label="Answered"><TimeAgo date={r.answeredAt} /></Row>}
               <Row label="Agent attempts">{r.hops}</Row>
-              <Row label="Tokens used">{r.tokensUsed.toLocaleString()}</Row>
+              {!agent && <Row label="Tokens used">{r.tokensUsed.toLocaleString()}</Row>}
               {r.discussionUrl && (
                 <Row label="Discussion">
                   <a href={r.discussionUrl} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline">
@@ -152,6 +160,12 @@ export default async function RequestPage({
                 </Row>
               )}
             </dl>
+            {agent && (
+              <div className="mt-4">
+                <div className="mb-1 text-sm text-slate-500">Token budget</div>
+                <ProgressBar value={r.tokensUsed} max={agent.maxTokens} />
+              </div>
+            )}
           </Card>
           {(isAsker || mayAnswer) && r.status !== "CLOSED" && (
             <Card title="Actions">

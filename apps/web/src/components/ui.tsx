@@ -153,6 +153,28 @@ export function Stat({ label, value, hint }: { label: string; value: ReactNode; 
   );
 }
 
+export function ProgressBar({ value, max }: { value: number; max: number }) {
+  const ratio = max > 0 ? Math.min(value / max, 1) : 0;
+  const pct = Math.round(ratio * 100);
+  const color = ratio >= 0.9 ? "bg-rose-500" : ratio >= 0.7 ? "bg-amber-500" : "bg-indigo-500";
+  return (
+    <div>
+      <div
+        role="progressbar"
+        aria-valuenow={value}
+        aria-valuemin={0}
+        aria-valuemax={max}
+        className="h-2 overflow-hidden rounded-full bg-slate-100"
+      >
+        <div className={cx("h-full rounded-full transition-all", color)} style={{ width: `${pct}%` }} />
+      </div>
+      <div className="mt-1 text-xs text-slate-500">
+        {value.toLocaleString()} / {max.toLocaleString()} ({pct}%)
+      </div>
+    </div>
+  );
+}
+
 export function Table({ head, children }: { head: ReactNode[]; children: ReactNode }) {
   return (
     <div className="overflow-x-auto">
