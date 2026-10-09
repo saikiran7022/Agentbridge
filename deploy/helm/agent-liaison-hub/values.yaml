@@ -24,6 +24,46 @@ auth:
   # Local clusters only: "sign in as <login>" instead of GitHub OAuth.
   devLogin: false
 
+# Single sign-on with any OIDC provider. With keycloak.enabled the chart fills these in for you.
+oidc:
+  name: SSO
+  issuer: ""
+  # Optional in-cluster URL for discovery, token and JWKS calls when the browser-facing issuer is not reachable from pods.
+  internalUrl: ""
+  clientId: ""
+  clientSecret: ""
+  # Realm role (token claim "roles") that makes a person an org admin in the Hub.
+  adminRole: hub-admin
+
+# Keycloak for sign-in and self-service sign-up. Dev mode with an embedded database: fine for local
+# clusters and evaluation, use your own Keycloak (set `oidc.*`) for anything shared.
+keycloak:
+  enabled: false
+  image: quay.io/keycloak/keycloak:26.0
+  # How browsers reach Keycloak. For local clusters: kubectl -n hub port-forward svc/<release>-agent-liaison-hub-keycloak 8080:8080
+  publicUrl: http://localhost:8080
+  realm: hub
+  clientId: agent-liaison-hub
+  # Generated and kept across upgrades when empty.
+  clientSecret: ""
+  admin:
+    username: admin
+    password: ""
+  # Show "Register" on the login page so people can create their own account.
+  registration: true
+  sslRequired: external
+  # Local demo: alice-dev (org admin), omar-devops, ivan-infra and sara-sec, all with demoPassword.
+  demoUsers: false
+  demoPassword: demo
+  # An org admin account created in the realm (leave username empty to skip).
+  hubAdmin:
+    username: ""
+    password: ""
+    email: ""
+  resources:
+    requests: { cpu: 250m, memory: 768Mi }
+    limits: { memory: 1536Mi }
+
 github:
   appId: ""
   clientId: ""

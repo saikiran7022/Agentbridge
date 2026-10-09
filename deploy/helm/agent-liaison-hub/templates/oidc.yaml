@@ -1,0 +1,30 @@
+{{- if include "hub.oidcEnabled" . }}
+{{- $name := include "hub.oidcSecretName" . }}
+{{- $existing := lookup "v1" "Secret" .Release.Namespace $name }}
+{{- $clientSecret := "" }}
+{{- $adminPassword := "" }}
+{{- if .Values.keycloak.enabled }}
+{{- $clientSecret = .Values.keycloak.clientSecret }}
+{{- $adminPassword = .Values.keycloak.admin.password }}
+{{- if and (not $clientSecret) $existing }}{{ $clientSecret = index $existing.data "clientSecret" | b64dec }}{{ end }}
+{{- if and (not $adminPassword) $existing }}{{ $adminPassword = index $existing.data "adminPassword" | b64dec }}{{ end }}
+{{- $clientSecret = default (randAlphaNum 40) $clientSecret }}
+{{- $adminPassword = default (randAlphaNum 20) $adminPassword }}
+{{- else }}
+{{- $clientSecret = .Values.oidc.clientSecret }}
+{{- end }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "hub.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  clientSecret: {{ $clientSecret | quote }}
+  {{- if .Values.keycloak.enabled }}
+  adminPassword: {{ $adminPassword | quote }}
+  realm.json: |
+    {{- include "hub.keycloakRealm" (merge (dict "clientSecret" $clientSecret) .) | nindent 4 }}
+  {{- end }}
+{{- end }}

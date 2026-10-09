@@ -4,10 +4,20 @@ import { signIn } from "next-auth/react";
 import { useState } from "react";
 import { Button, Input } from "@/components/ui";
 
-export function LoginButtons({ github, dev, callbackUrl }: { github: boolean; dev: boolean; callbackUrl: string }) {
+export function LoginButtons({ github, dev, sso, callbackUrl }: { github: boolean; dev: boolean; sso: string | null; callbackUrl: string }) {
   const [login, setLogin] = useState("");
   return (
     <div className="space-y-4">
+      {sso && (
+        <div className="space-y-2">
+          <Button className="w-full" onClick={() => signIn("oidc", { callbackUrl })}>
+            Sign in with {sso}
+          </Button>
+          <p className="text-center text-xs text-slate-500">
+            New here? Choose <strong>Register</strong> on the next page. Your account is created right away, then you can ask to join teams.
+          </p>
+        </div>
+      )}
       {github && (
         <Button className="w-full" onClick={() => signIn("github", { callbackUrl })}>
           Sign in with GitHub

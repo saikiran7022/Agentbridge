@@ -23,3 +23,10 @@ data:
   WORKER_PORT: "4000"
   GITHUB_APP_ID: {{ .Values.github.appId | quote }}
   GITHUB_APP_CLIENT_ID: {{ .Values.github.clientId | quote }}
+{{- if include "hub.oidcEnabled" . }}
+  OIDC_NAME: {{ if .Values.keycloak.enabled }}"Keycloak"{{ else }}{{ .Values.oidc.name | quote }}{{ end }}
+  OIDC_ISSUER: {{ include "hub.oidcIssuer" . | quote }}
+  OIDC_INTERNAL_URL: {{ include "hub.oidcInternalUrl" . | quote }}
+  OIDC_CLIENT_ID: {{ include "hub.oidcClientId" . | quote }}
+  OIDC_ADMIN_ROLE: {{ .Values.oidc.adminRole | quote }}
+{{- end }}

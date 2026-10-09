@@ -5,6 +5,7 @@
 #   ./deploy/local-up.sh                     # Hub + bundled Postgres/Redis in namespace "hub"
 #   DEMO=true ./deploy/local-up.sh           # also seed the demo "payments" project
 #   AGENT_MODE=off ./deploy/local-up.sh      # no kagent yet: route every request to people
+#   KEYCLOAK=false ./deploy/local-up.sh      # skip Keycloak and sign in with the dev login only
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -14,6 +15,8 @@ TAG="${TAG:-dev}"
 HUB_URL="${HUB_URL:-http://localhost:3000}"
 AGENT_MODE="${AGENT_MODE:-kagent}"
 DEMO="${DEMO:-false}"
+KEYCLOAK="${KEYCLOAK:-true}"
+KEYCLOAK_URL="${KEYCLOAK_URL:-http://localhost:8080}"
 
 echo "==> Building images (tag $TAG)"
 docker build --target web -t "agent-liaison-hub-web:$TAG" .
@@ -47,9 +50,21 @@ helm upgrade --install "$RELEASE" deploy/helm/agent-liaison-hub \
   --set agents.mode="$AGENT_MODE" \
   --set agents.kubeApply="$([[ "$AGENT_MODE" == "kagent" ]] && echo true || echo false)" \
   --set migrations.demo="$DEMO" \
+  --set keycloak.enabled="$KEYCLOAK" \
+  --set keycloak.publicUrl="$KEYCLOAK_URL" \
+  --set keycloak.sslRequired=none \
+  --set keycloak.demoUsers="$DEMO" \
   --wait --timeout 10m
 
 echo
 echo "==> Ready. In another terminal:"
 echo "    kubectl -n $NAMESPACE port-forward svc/$RELEASE-web 3000:3000"
-echo "    open $HUB_URL and sign in with any login (the first one becomes admin)"
+if [[ "$KEYCLOAK" == "true" ]]; then
+  echo "    kubectl -n $NAMESPACE port-forward svc/$RELEASE-keycloak 8080:8080     # sign-in and sign-up page"
+  echo "    open $HUB_URL and choose Sign in with Keycloak. Register for a new account."
+  [[ "$DEMO" == "true" ]] && echo "    demo logins: alice-dev (org admin), omar-devops, ivan-infra, sara-sec, password: demo"
+  kc_pass="$(kubectl -n "$NAMESPACE" get secret "$RELEASE-oidc" -o jsonpath='{.data.adminPassword}' | base64 -d)"
+  echo "    Keycloak console: $KEYCLOAK_URL  (user admin, password $kc_pass)"
+else
+  echo "    open $HUB_URL and sign in with any login (the first one becomes admin)"
+fi

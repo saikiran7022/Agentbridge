@@ -1,0 +1,80 @@
+{{- if .Values.keycloak.enabled }}
+{{- $name := printf "%s-keycloak" (include "hub.fullname" .) }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "hub.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "hub.selector" (dict "root" . "component" "keycloak") | nindent 4 }}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "hub.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "hub.selector" (dict "root" . "component" "keycloak") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "hub.selector" (dict "root" . "component" "keycloak") | nindent 8 }}
+      annotations:
+        checksum/realm: {{ include "hub.keycloakRealm" (merge (dict "clientSecret" "x") .) | sha256sum }}
+    spec:
+      containers:
+        - name: keycloak
+          image: {{ .Values.keycloak.image }}
+          args: ["start-dev", "--import-realm"]
+          env:
+            - name: KC_BOOTSTRAP_ADMIN_USERNAME
+              value: {{ .Values.keycloak.admin.username | quote }}
+            - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "hub.oidcSecretName" . }}
+                  key: adminPassword
+            # Browsers see the public URL. Pods calling the in-cluster service get back-channel URLs on that host.
+            - name: KC_HOSTNAME
+              value: {{ .Values.keycloak.publicUrl | quote }}
+            - name: KC_HOSTNAME_BACKCHANNEL_DYNAMIC
+              value: "true"
+            - name: KC_HTTP_ENABLED
+              value: "true"
+            - name: KC_HEALTH_ENABLED
+              value: "true"
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet: { path: /realms/{{ .Values.keycloak.realm }}/.well-known/openid-configuration, port: http }
+            initialDelaySeconds: 20
+            periodSeconds: 5
+            failureThreshold: 30
+          resources:
+            {{- toYaml .Values.keycloak.resources | nindent 12 }}
+          volumeMounts:
+            - name: realm
+              mountPath: /opt/keycloak/data/import/realm.json
+              subPath: realm.json
+              readOnly: true
+      volumes:
+        - name: realm
+          secret:
+            secretName: {{ include "hub.oidcSecretName" . }}
+            items:
+              - key: realm.json
+                path: realm.json
+{{- end }}

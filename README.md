@@ -115,6 +115,40 @@ helm upgrade --install agent-liaison-hub deploy/helm/agent-liaison-hub -n hub --
 All options are in [`values.yaml`](deploy/helm/agent-liaison-hub/values.yaml). Migrations and the idempotent seed run as
 a Job on every install and upgrade.
 
+## Sign-in, sign-up and access control
+
+**Sign-in options** (any combination): OIDC single sign-on (Keycloak or any OIDC provider), GitHub OAuth through the GitHub App, and a dev-only
+login. The local Kubernetes install deploys Keycloak for you and imports a `hub` realm with self-registration switched on:
+
+```bash
+DEMO=true ./deploy/local-up.sh
+kubectl -n hub port-forward svc/agent-liaison-hub-web 3000:3000 &
+kubectl -n hub port-forward svc/agent-liaison-hub-keycloak 8080:8080 &
+```
+
+Open http://localhost:3000, choose **Sign in with Keycloak** and use **Register** to create an account. Demo logins (with `DEMO=true`):
+`alice-dev` (org admin), `omar-devops`, `ivan-infra`, `sara-sec`, all with password `demo`. The Keycloak console is at
+http://localhost:8080 (the script prints the generated admin password).
+
+For a shared install turn on `keycloak.enabled` with a real `keycloak.publicUrl`, a `keycloak.hubAdmin` account, and no demo users, or point
+`oidc.issuer`, `oidc.clientId` and `oidc.clientSecret` at your own provider. The client must allow the redirect URI
+`<HUB_URL>/api/auth/callback/oidc`. Keycloak here runs in dev mode with an embedded database, so use your own for production.
+
+**Who can do what**
+
+| Role | How you get it | What you can do |
+| --- | --- | --- |
+| Org admin | Realm role `hub-admin` in your identity provider, or set on **Manage → People** | The only role that creates, edits and deletes **teams**. Approves join requests, puts anyone on a team or project, manages MCP servers and skills |
+| Team member | Sign up, **Teams → Request to join**, an org admin approves | Can be seated on projects on behalf of that team and can start a project for it |
+| Project owner / approver / contributor / viewer | Project roles | Run the project, approve agent changes, answer requests, or read |
+
+A person can belong to several teams. Project owners can only seat people on behalf of teams those people belong to; an org admin can seat
+anyone, which also puts them on that team. A new OIDC account never takes over an existing Hub account: matching is by the provider's stable
+subject, and only an account an admin pre-added and nobody has signed in to can be claimed by login name. **Manage** (admins) shows pending
+join requests, teams, and which teams each project is missing.
+
+The UI has a light and dark theme (the toggle is next to Sign out; the first visit follows your OS).
+
 ## GitHub App
 
 One GitHub App provides both sign-in and Discussions access. Create it under your org's **Settings → Developer settings
