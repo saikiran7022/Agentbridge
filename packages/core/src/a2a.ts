@@ -22,6 +22,7 @@ interface Part {
   kind?: string;
   type?: string;
   text?: string;
+  data?: unknown;
 }
 
 interface A2AMessage {
@@ -50,6 +51,22 @@ function partsText(parts: Part[] | undefined): string {
     .trim();
 }
 
+/**
+ * kagent agents have a built-in `ask_user` tool. When the model calls it the task pauses in `input-required` with
+ * the question in a data part (and no text), so pull the question out of the tool call.
+ */
+function pendingQuestions(parts: Part[] | undefined): string {
+  const asked: string[] = [];
+  for (const p of parts ?? []) {
+    if ((p.kind ?? p.type) !== "data" || !p.data || typeof p.data !== "object") continue;
+    const data = p.data as { args?: { originalFunctionCall?: { args?: { questions?: { question?: string }[] } }; toolConfirmation?: { hint?: string } } };
+    const questions = data.args?.originalFunctionCall?.args?.questions;
+    for (const q of questions ?? []) if (q.question) asked.push(q.question);
+    if (!questions?.length && data.args?.toolConfirmation?.hint) asked.push(data.args.toolConfirmation.hint);
+  }
+  return asked.join("\n");
+}
+
 function findTokenCount(value: unknown, depth = 0): number | undefined {
   if (!value || typeof value !== "object" || depth > 6) return undefined;
   for (const [key, v] of Object.entries(value as Record<string, unknown>)) {
@@ -68,6 +85,7 @@ export function extractA2AResult(result: unknown): InvokeAgentOutput {
   }
   let text = (r.artifacts ?? []).map((a) => partsText(a.parts)).filter(Boolean).join("\n\n");
   if (!text) text = partsText(r.status?.message?.parts);
+  if (!text && r.status?.state === "input-required") text = pendingQuestions(r.status.message?.parts);
   if (!text) {
     const lastAgent = [...(r.history ?? [])].reverse().find((m) => m.role === "agent");
     text = partsText(lastAgent?.parts);

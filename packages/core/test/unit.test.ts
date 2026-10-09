@@ -140,3 +140,33 @@ describe("GitHub helpers", () => {
     expect(matchCategory(cats, { key: "devops", name: "DevOps" }, "General")).toEqual({ category: cats[0], usedFallback: true });
   });
 });
+
+describe("extractA2AResult with a paused ask_user task", () => {
+  it("returns the question the agent asked instead of empty text", () => {
+    const out = extractA2AResult({
+      kind: "task",
+      id: "t1",
+      contextId: "c1",
+      status: {
+        state: "input-required",
+        message: {
+          role: "agent",
+          parts: [
+            {
+              kind: "data",
+              data: {
+                name: "adk_request_confirmation",
+                args: {
+                  originalFunctionCall: { name: "ask_user", args: { questions: [{ question: "Which cluster?" }] } },
+                  toolConfirmation: { confirmed: false, hint: "Which cluster?" },
+                },
+              },
+            },
+          ],
+        },
+      },
+    });
+    expect(out.state).toBe("input-required");
+    expect(out.text).toBe("Which cluster?");
+  });
+});

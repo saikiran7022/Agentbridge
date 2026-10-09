@@ -280,7 +280,12 @@ export async function processDispatch(requestId: string, deps: ProcessorDeps = d
   }
 
   const tokens = output.totalTokens ?? Math.ceil((prompt.length + output.text.length) / 4);
-  const result = parseHubResult(output.state === "input-required" ? `${output.text}` : output.text);
+  const parsed = parseHubResult(output.text);
+  // A paused task (the agent called ask_user) has no structured block; tell people what it wanted to know.
+  const result =
+    output.state === "input-required" && !parsed.structured
+      ? { ...parsed, reason: `The agent needs more information: ${output.text || "no question given"}` }
+      : parsed;
 
   let resolved = choice.agent;
   if (choice.isRouter && result.department) {
