@@ -1,0 +1,7 @@
+apiVersion: v2
+name: agent-liaison-hub
+description: Agent Liaison Hub - team liaison agents on kagent, coordinated through GitHub Discussions
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords: [kagent, mcp, claude, github-discussions]

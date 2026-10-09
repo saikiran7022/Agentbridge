@@ -62,7 +62,7 @@ services:
     volumes:
       # Optional: lets the worker apply agents to your cluster when HUB_KUBE_APPLY=true.
       # The kubeconfig's server address must be reachable from inside the container.
-      - ${KUBECONFIG_DIR:-~/.kube}:/root/.kube:ro
+      - ${KUBECONFIG_DIR:-~/.kube}:/home/node/.kube:ro
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }

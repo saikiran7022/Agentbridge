@@ -1,0 +1,105 @@
+# Images built from the repository Dockerfile (`--target web` / `--target worker`).
+# For kind: `kind load docker-image agent-liaison-hub-web:dev agent-liaison-hub-worker:dev`.
+# Docker Desktop and minikube (with `eval $(minikube docker-env)`) can use local images directly.
+image:
+  web:
+    repository: agent-liaison-hub-web
+    tag: dev
+  worker:
+    repository: agent-liaison-hub-worker
+    tag: dev
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# Public URL people and GitHub use to reach the Hub (links, CLI login, OAuth callback, webhooks).
+hubUrl: http://localhost:3000
+
+org:
+  name: Acme Engineering
+  slug: acme
+
+auth:
+  # Generated and kept across upgrades when empty.
+  nextauthSecret: ""
+  # Local clusters only: "sign in as <login>" instead of GitHub OAuth.
+  devLogin: false
+
+github:
+  appId: ""
+  clientId: ""
+  clientSecret: ""
+  privateKey: ""
+  webhookSecret: ""
+
+agents:
+  # "kagent" sends requests to liaison agents; "off" routes everything to people.
+  mode: kagent
+  # Let the worker create/update/prune Agents, MCP servers and ModelConfigs itself.
+  kubeApply: true
+  kagent:
+    namespace: kagent
+    # In-cluster kagent controller (A2A endpoint).
+    url: http://kagent-controller.kagent:8083
+    apiKeySecret: kagent-anthropic
+    apiKeySecretKey: ANTHROPIC_API_KEY
+    defaultModel: claude-sonnet-4-5
+    invokeTimeoutSeconds: 300
+
+requestTimeoutMinutes: 30
+
+notifications:
+  slackWebhookUrl: ""
+  smtpUrl: ""
+  smtpFrom: "Agent Liaison Hub <hub@example.com>"
+
+# Use an existing Secret instead of the chart-managed one. It must contain every key the chart
+# would create (see templates/secret.yaml).
+existingSecret: ""
+
+# Extra environment variables for web and worker.
+extraEnv: []
+
+migrations:
+  # Seed the org and departments (idempotent) after migrating.
+  seed: true
+  # Also create the demo "payments" project with one person per team.
+  demo: false
+
+web:
+  replicas: 1
+  resources: {}
+  service:
+    type: ClusterIP
+    port: 3000
+
+worker:
+  replicas: 1
+  resources: {}
+
+serviceAccount:
+  create: true
+  name: ""
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: hub.local
+  tls: []
+
+# Bundled single-instance Postgres and Redis for local clusters. Disable and set externalDatabaseUrl /
+# externalRedisUrl for anything shared.
+postgres:
+  enabled: true
+  image: postgres:16-alpine
+  user: hub
+  password: hub
+  database: hub
+  storage: 2Gi
+  storageClass: ""
+externalDatabaseUrl: ""
+
+redis:
+  enabled: true
+  image: redis:7-alpine
+externalRedisUrl: ""

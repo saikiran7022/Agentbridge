@@ -2,12 +2,6 @@ import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import type { TestProject } from "vitest/node";
 
-declare module "vitest" {
-  export interface ProvidedContext {
-    dbReady: boolean;
-  }
-}
-
 /** Applies migrations to the test database; database tests skip themselves when it is unreachable. */
 export default function setup(project: TestProject) {
   const url = process.env.TEST_DATABASE_URL ?? "postgresql://hub:hub@localhost:5432/hub_test";

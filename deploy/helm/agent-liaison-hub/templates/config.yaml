@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "hub.fullname" . }}-config
+  labels:
+    {{- include "hub.labels" . | nindent 4 }}
+data:
+  HUB_URL: {{ .Values.hubUrl | quote }}
+  NEXTAUTH_URL: {{ .Values.hubUrl | quote }}
+  HUB_ORG_NAME: {{ .Values.org.name | quote }}
+  HUB_ORG_SLUG: {{ .Values.org.slug | quote }}
+  HUB_DEV_LOGIN: {{ .Values.auth.devLogin | quote }}
+  HUB_AGENT_MODE: {{ .Values.agents.mode | quote }}
+  HUB_KUBE_APPLY: {{ .Values.agents.kubeApply | quote }}
+  KAGENT_URL: {{ .Values.agents.kagent.url | quote }}
+  KAGENT_NAMESPACE: {{ .Values.agents.kagent.namespace | quote }}
+  KAGENT_API_KEY_SECRET: {{ .Values.agents.kagent.apiKeySecret | quote }}
+  KAGENT_API_KEY_SECRET_KEY: {{ .Values.agents.kagent.apiKeySecretKey | quote }}
+  KAGENT_DEFAULT_MODEL: {{ .Values.agents.kagent.defaultModel | quote }}
+  KAGENT_INVOKE_TIMEOUT_SECONDS: {{ .Values.agents.kagent.invokeTimeoutSeconds | quote }}
+  HUB_REQUEST_TIMEOUT_MINUTES: {{ .Values.requestTimeoutMinutes | quote }}
+  SMTP_FROM: {{ .Values.notifications.smtpFrom | quote }}
+  WORKER_PORT: "4000"
+  GITHUB_APP_ID: {{ .Values.github.appId | quote }}
+  GITHUB_APP_CLIENT_ID: {{ .Values.github.clientId | quote }}
