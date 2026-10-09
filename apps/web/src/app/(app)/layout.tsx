@@ -28,6 +28,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           {isAdmin && (
             <>
               <div className="px-3 pb-1 pt-5 text-xs font-semibold uppercase tracking-wide text-slate-400">Organization</div>
+              <NavLink href="/manage">Manage</NavLink>
               <NavLink href="/admin/users">People</NavLink>
               <NavLink href="/admin/departments">Departments</NavLink>
               <NavLink href="/admin/mcp-servers">MCP servers</NavLink>
