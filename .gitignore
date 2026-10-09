@@ -7,4 +7,5 @@ coverage/
 .env
 .env.local
 next-env.d.ts
+apps/web/public/cli/
 .DS_Store

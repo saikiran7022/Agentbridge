@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "dotenv -e ../../.env -- next dev -p 3000",
-    "build": "next build",
+    "dev": "node ./scripts/bundle-cli.mjs && dotenv -e ../../.env -- next dev -p 3000",
+    "build": "node ./scripts/bundle-cli.mjs && next build",
     "start": "next start -p ${PORT:-3000}",
     "typecheck": "tsc --noEmit"
   },

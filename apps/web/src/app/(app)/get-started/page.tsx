@@ -23,7 +23,7 @@ export default async function GetStartedPage({ searchParams }: { searchParams: P
         hub: {
           type: "http",
           url: `${hubUrl}/api/mcp`,
-          headers: { Authorization: "Bearer ${HUB_TOKEN}" },
+          headers: { Authorization: "Bearer ${HUB_TOKEN}", "X-Hub-Project": project },
         },
       },
     },
@@ -38,8 +38,10 @@ export default async function GetStartedPage({ searchParams }: { searchParams: P
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           <Card title="1. Log in and set up your repository">
-            <p className="mb-3 text-sm text-slate-600">Run these in the repository you work in. They open your browser to approve a token, write <code>.mcp.json</code>, and install the project's skills under <code>.claude/skills/</code>.</p>
-            <Pre>{`npx @hub/cli login --url ${hubUrl}\nnpx @hub/cli init --project ${project}`}</Pre>
+            <p className="mb-3 text-sm text-slate-600">
+              Install the <code>hub</code> CLI from this Hub (a single Node 20+ file), then run the rest in the repository you work in. Login opens your browser to approve a token; <code>init</code> writes <code>.mcp.json</code>, installs the project's skills under <code>.claude/skills/</code> and adds a short section to <code>CLAUDE.md</code>.
+            </p>
+            <Pre>{`mkdir -p ~/.local/bin && curl -fsSL ${hubUrl}/cli/hub.mjs -o ~/.local/bin/hub && chmod +x ~/.local/bin/hub\nhub login --url ${hubUrl}\nhub init --project ${project}`}</Pre>
             <p className="mt-3 text-sm text-slate-600">
               Then restart Claude Code (VS Code extension or CLI). Try: <em>"Ask infra which Vault path holds the staging database credentials."</em>
             </p>
@@ -50,9 +52,9 @@ export default async function GetStartedPage({ searchParams }: { searchParams: P
             </p>
             <Pre>{mcpJson}</Pre>
             <p className="mt-3 text-sm text-slate-600">Or with the Claude Code CLI:</p>
-            <Pre>{`claude mcp add --transport http hub ${hubUrl}/api/mcp --header "Authorization: Bearer $HUB_TOKEN"`}</Pre>
+            <Pre>{`claude mcp add --transport http hub ${hubUrl}/api/mcp --header "Authorization: Bearer $HUB_TOKEN" --header "X-Hub-Project: ${project}"`}</Pre>
             <p className="mt-3 text-xs text-slate-500">
-              Prefer a local process? <code>npx @hub/mcp</code> runs the same tools over stdio using <code>HUB_URL</code> and <code>HUB_TOKEN</code>.
+              Prefer a local process? <code>hub mcp</code> runs the same tools over stdio using your saved login (or <code>HUB_URL</code> and <code>HUB_TOKEN</code>); <code>hub init --transport http</code> writes the hosted variant above.
             </p>
           </Card>
           <Card title="What your Claude Code can do">
